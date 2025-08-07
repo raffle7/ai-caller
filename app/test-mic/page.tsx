@@ -6,7 +6,9 @@ export default function TestMicPage() {
   const [avgVolume, setAvgVolume] = useState(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
+  // Force correct type for WebAudio API
+  type StrictUint8Array = Uint8Array & { buffer: ArrayBuffer };
+  const dataArrayRef = useRef<StrictUint8Array | null>(null);
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -19,7 +21,8 @@ export default function TestMicPage() {
 
       analyser.fftSize = 256;
       const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+  // Always use number for bufferLength, so Uint8Array is correct type
+  const dataArray: StrictUint8Array = new Uint8Array(bufferLength) as StrictUint8Array;
 
       source.connect(analyser);
 
@@ -30,7 +33,10 @@ export default function TestMicPage() {
 
       intervalRef.current = setInterval(() => {
         if (!analyserRef.current || !dataArrayRef.current) return;
-        analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+        // Defensive: only use if buffer is ArrayBuffer
+        if (dataArrayRef.current.buffer instanceof ArrayBuffer) {
+          analyserRef.current.getByteFrequencyData(dataArrayRef.current as unknown as Uint8Array<ArrayBuffer>);
+        }
         const avg =
           dataArrayRef.current.reduce((sum, val) => sum + val, 0) / dataArrayRef.current.length;
         setAvgVolume(avg);

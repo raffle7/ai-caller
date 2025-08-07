@@ -44,7 +44,7 @@ export async function connectDB() {
   if (!global._mongo.mongoose?.promise) {
     global._mongo.mongoose = {
       conn: null,
-      promise: mongoose.connect(uri, { bufferCommands: false }).then((mongoose) => mongoose.connection),
+      promise: mongoose.connect(uri as string, { bufferCommands: false }).then((mongoose) => mongoose.connection),
     };
   }
 
