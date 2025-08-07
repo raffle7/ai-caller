@@ -28,10 +28,10 @@ const RestaurantSchema = new mongoose.Schema({
   posApiKey: String,
   menu: [MenuItemSchema],
   deals: [DealSchema],
-  language: { type: String },      // ⬅️ ADD
-  voice: { type: String },         // ⬅️ ADD
-  accent: { type: String },        // ⬅️ ADD
-  step:{type: Number, default: 1}, // ⬅️ ADD
+  language: { type: String },
+  voice: { type: String },
+  accent: { type: String },
+  step: { type: Number, default: 1 },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -44,6 +44,17 @@ const RestaurantSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  subscriptionId: String,
+  paymentStatus: {
+    type: String,
+    enum: ['inactive', 'active'],
+    default: 'inactive'
+  },
+  plan: {
+    type: String,
+    enum: ['basic', 'professional', 'enterprise'],
+    default: 'basic'
   }
 });
 

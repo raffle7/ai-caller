@@ -6,9 +6,19 @@ import Restaurant from "@/model/Restaurant";
 
 export async function GET(req: NextRequest) {
   try {
+    // Try to get session from the request
     const session = await getServerSession(authOptions);
+    
+    // If no session, check Authorization header
     if (!session?.user?.id) {
-      return NextResponse.json({ complete: false, step: 1 });
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader?.startsWith('Bearer ')) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      const token = authHeader.split(' ')[1];
+      if (!token) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
     await connectDB();

@@ -3,7 +3,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectItem, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-function MenuStep({ form, setForm, prevStep, nextStep }: { form: any; setForm: any; prevStep: () => void; nextStep: () => void }) {
+interface MenuItem {
+  name: string;
+  price: string | number;
+  description?: string;
+  category?: string;
+}
+
+interface MenuCategory {
+  category: string;
+  items: MenuItem[];
+}
+
+interface Deal {
+  name: string;
+  description: string;
+}
+
+import { SetupForm } from "@/types";
+
+interface MenuStepProps {
+  form: SetupForm;
+  setForm: React.Dispatch<React.SetStateAction<SetupForm>>;
+  prevStep: () => void;
+  nextStep: () => void;
+}
+
+function MenuStep({ form, setForm, prevStep, nextStep }: MenuStepProps) {
   const [category, setCategory] = React.useState("");
   const [menuItem, setMenuItem] = React.useState({ name: "", price: "", category: "" });
   const [deal, setDeal] = React.useState({ name: "", description: "" });

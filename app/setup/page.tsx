@@ -13,37 +13,7 @@ import GoLiveStep from "./GoLiveStep";
 import MenuStep from "./MenuStep";
 import AIConfigStep from "@/components/AIConfigStep";
 
-const POS_OPTIONS = ["Square", "Toast", "Clover"] as const;
-type POSSystem = typeof POS_OPTIONS[number];
-
-interface MenuItem {
-  name: string;
-  price: number;
-  description: string;
-  category: string;
-}
-
-interface Deal {
-  name: string;
-  description: string;
-  items: MenuItem[];
-  price: number;
-}
-
-interface SetupForm {
-  name: string;
-  locations: string[];
-  ownerName: string;
-  restaurantNumber: string;
-  aiNumber: string;
-  posSystem: POSSystem | "";
-  posApiKey?: string;
-  menu: MenuItem[];
-  deals: Deal[];
-  language?: string;
-  voice?: string;
-  accent?: string;
-}
+import { SetupForm } from "@/types";
 
 
 function SetupWizard() {

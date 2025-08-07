@@ -3,21 +3,29 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectItem, SelectTrigger, SelectContent, SelectValue } from "@/components/ui/select";
 
-const LANGUAGES = ["English", "Spanish", "French", "German"];
-const VOICES = ["Male", "Female"];
-const ACCENTS = ["US", "UK", "Australian", "Indian"];
+const LANGUAGES = ["English", "Spanish", "French", "German"] as const;
+const VOICES = ["Male", "Female"] as const;
+const ACCENTS = ["US", "UK", "Australian", "Indian"] as const;
+
+type Language = typeof LANGUAGES[number];
+type Voice = typeof VOICES[number];
+type Accent = typeof ACCENTS[number];
+
+import { SetupForm } from "@/types";
+
+interface AIConfigStepProps {
+  form: SetupForm;
+  setForm: React.Dispatch<React.SetStateAction<SetupForm>>;
+  prevStep: () => void;
+  nextStep: () => void;
+}
 
 function AIConfigStep({
   form,
   setForm,
   prevStep,
   nextStep
-}: {
-  form: any;
-  setForm: any;
-  prevStep: () => void;
-  nextStep: () => void;
-}) {
+}: AIConfigStepProps) {
   return (
     <div className="space-y-6">
       <div>

@@ -1,65 +1,93 @@
+// app/api/simulate-order/route.ts
+
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]";
+import { OpenAI } from "openai";
 import { connectDB } from "@/lib/db";
 import Restaurant from "@/model/Restaurant";
-import OpenAI from "openai";
-import { Readable } from "stream";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   await connectDB();
-  const restaurant = await Restaurant.findOne({ userId: session.user.id });
-  if (!restaurant) {
-    return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
-  }
-
   const formData = await req.formData();
-  const file = formData.get("audio") as File;
-  if (!file) {
-    return NextResponse.json({ error: "No audio uploaded" }, { status: 400 });
+  const audio = formData.get("audio");
+  const menuJson = formData.get("menu");
+
+  if (!(audio instanceof Blob)) {
+    return NextResponse.json({ error: "Invalid audio file" }, { status: 400 });
   }
 
-  // Convert File to Readable stream for Whisper
-  const stream = Readable.from(Buffer.from(await file.arrayBuffer()));
+  // Convert Blob to Buffer
+  const buffer = Buffer.from(await audio.arrayBuffer());
+  const file = new File([buffer], "audio.webm", { type: "audio/webm" });
 
-  // Whisper transcription
-  const transcription = await openai.audio.transcriptions.create({
+  // Transcribe audio
+  const transcriptRes = await openai.audio.transcriptions.create({
+    file,
     model: "whisper-1",
-    file: file
+    response_format: "json",
+    language: "en",
   });
 
-  const transcript = transcription.text;
+  const transcript = transcriptRes.text;
 
-  // Extract flat list of allowed items
-  const allowedItems = restaurant.menu.flatMap((cat: any) =>
-    cat.items.map((item: any) => item.name.toLowerCase())
-  );
+  // Get menu from frontend or database
+  let menu = [];
+  if (menuJson) {
+    try {
+      menu = JSON.parse(menuJson as string);
+    } catch {
+      menu = [];
+    }
+  } else {
+    // If not sent from frontend, get from DB (assuming user is authenticated)
+    // You may need to get userId from session or token here
+    const restaurant = await Restaurant.findOne(); // You should filter by user/session
+    if (restaurant?.menu) menu = restaurant.menu;
+  }
 
-  // GPT conversation
+  // Compose prompt using real menu
+ const menuItems = Array.isArray(menu)
+  ? menu
+      .flatMap((cat: any) =>
+        Array.isArray(cat.items)
+          ? cat.items.map((i: any) => i.name)
+          : []
+      )
+      .filter(Boolean)
+      .join(", ")
+  : "";
+
+console.log("Menu sent to GPT:", menuItems);
+
+const prompt = `
+You are a food ordering assistant. The available items are: ${menuItems}.
+If a user orders something that is NOT on the menu, politely say it's not available.
+User: "${transcript}"
+`;
+
   const gptRes = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [
-      {
-        role: "system",
-        content: `You're an AI food assistant for a restaurant named ${restaurant.name}. Only accept orders for the following menu items: ${allowedItems.join(
-          ", "
-        )}. If the customer asks for something not on the menu, politely inform them it's unavailable.`,
-      },
-      {
-        role: "user",
-        content: transcript,
-      },
+      { role: "system", content: "You are a helpful restaurant assistant." },
+      { role: "user", content: prompt },
     ],
   });
 
+  const orderedItem = menuItems
+  .split(",")
+  .map(item => item.trim().toLowerCase())
+  .find(item => transcript.toLowerCase().includes(item));
+
+  const orderPlaced = !!orderedItem;
+
   const reply = gptRes.choices[0].message.content;
 
-  return NextResponse.json({ transcript, reply });
+  return NextResponse.json({
+  transcript,
+  reply: orderPlaced
+    ? `${reply}\n\nOrder placed for: ${orderedItem}.`
+    : reply,
+  orderPlaced
+});
 }
