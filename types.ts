@@ -40,3 +40,7 @@ export interface SetupForm {
   voice?: Voice;
   accent?: Accent;
 }
+
+export interface TextToSpeechResponse {
+  message: string;
+}

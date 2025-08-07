@@ -12,12 +12,13 @@ type Props = {
 function SimulatedTestCallModal({ onClose, restaurant }: Props) {
   const [transcript, setTranscript] = useState("");
   const [response, setResponse] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [aiSpeaking, setAiSpeaking] = useState(false);
   const [menu, setMenu] = useState(restaurant.menu);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch latest menu from backend
   useEffect(() => {
     async function fetchMenu() {
       const res = await fetch("/api/setup/check");
@@ -29,19 +30,35 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
     fetchMenu();
   }, []);
 
-  const speak = (text: string) => {
-  speechSynthesis.cancel(); // Cancel any ongoing speech first
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang =
-    restaurant.language === "Spanish"
-      ? "es-ES"
-      : restaurant.language === "French"
-      ? "fr-FR"
-      : restaurant.language === "German"
-      ? "de-DE"
-      : "en-US";
-  speechSynthesis.speak(utterance);
-};
+  const speak = (text: string, afterSpeak?: () => void) => {
+    speechSynthesis.cancel();
+    setAiSpeaking(true);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang =
+      restaurant.language === "Spanish"
+        ? "es-ES"
+        : restaurant.language === "French"
+        ? "fr-FR"
+        : restaurant.language === "German"
+        ? "de-DE"
+        : "en-US";
+
+    utterance.onend = () => {
+      console.log("Speech ended");
+      setAiSpeaking(false);
+      afterSpeak?.();
+    };
+
+    setTimeout(() => {
+      if (aiSpeaking) {
+        speechSynthesis.cancel();
+        setAiSpeaking(false);
+        afterSpeak?.();
+      }
+    }, 10000); // fallback after 10s
+
+    speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     const greeting =
@@ -50,44 +67,133 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
         .map((cat) => `${cat.category}: ${cat.items.map((i) => i.name).join(", ")}`)
         .join(" | ") +
       ". What would you like to order?";
-    speak(greeting);
+    speak(greeting, () => startListening());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menu]);
 
-  const handleStartRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
-    audioChunks.current = [];
+  const startListening = async () => {
+  setTranscript("");
+  setResponse("");
+  setIsListening(true);
 
-    recorder.ondataavailable = (e) => audioChunks.current.push(e.data);
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    console.error("Error accessing microphone:", error);
+    return;
+  }
 
-    recorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunks.current, { type: "audio/webm" });
-      const formData = new FormData();
-      formData.append("audio", audioBlob);
+  const audioContext = new AudioContext();
+  const analyser = audioContext.createAnalyser();
+  const source = audioContext.createMediaStreamSource(stream);
+  source.connect(analyser);
+  analyser.fftSize = 2048;
+  const dataArray = new Uint8Array(analyser.fftSize);
 
-      // Send menu to backend for accurate AI response
-      formData.append("menu", JSON.stringify(menu));
+  mediaRecorderRef.current = new MediaRecorder(stream, {
+    mimeType: "audio/webm;codecs=opus",
+  });
+  audioChunks.current = [];
 
-      const res = await fetch("/api/simulate-order", {
-        method: "POST",
-        body: formData,
-      });
+  mediaRecorderRef.current.ondataavailable = (e) => audioChunks.current.push(e.data);
 
-      const data = await res.json();
-      setTranscript(data.transcript);
-      setResponse(data.reply);
-      speak(data.reply);
-    };
+  mediaRecorderRef.current.onstop = async () => {
+    setIsListening(false);
+    audioContext.close();
+    const audioBlob = new Blob(audioChunks.current, { type: "audio/webm" });
 
-    mediaRecorderRef.current = recorder;
-    recorder.start();
-    setIsRecording(true);
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "audio.webm");
+    formData.append("menu", JSON.stringify(menu || []));
+
+    const res = await fetch("/api/simulate-order", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      console.error("Simulate-order API failed", await res.text());
+      return;
+    }
+
+    const data = await res.json();
+    setTranscript(data.transcript);
+    setResponse(data.reply);
+
+    if (data.orderPlaced) {
+      onClose();
+      return;
+    }
+
+    speak(data.reply, () => startListening());
   };
 
-  const handleStopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
+  mediaRecorderRef.current.start();
+
+  // Force stop after 10 seconds max
+  setTimeout(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      console.warn("Forced stop due to timeout");
+      mediaRecorderRef.current.stop();
+    }
+  }, 10000);
+
+  let totalVolume = 0;
+  let volumeChecks = 0;
+  let hasUserSpoken = false;
+
+  const checkSilence = () => {
+    analyser.getByteTimeDomainData(dataArray);
+    const avg = dataArray.reduce((sum, val) => sum + Math.abs(val - 128), 0) / dataArray.length;
+
+    // Start silence logic only after detecting initial voice spike
+    if (avg > 2) {
+      hasUserSpoken = true;
+    }
+
+    if (hasUserSpoken) {
+      totalVolume += avg;
+      volumeChecks++;
+      const smoothed = totalVolume / volumeChecks;
+      console.log("avg volume", smoothed.toFixed(4));
+
+      if (smoothed < 1.5) {
+        if (!silenceTimeoutRef.current) {
+          silenceTimeoutRef.current = setTimeout(() => {
+            if (mediaRecorderRef.current?.state === "recording") {
+              console.log("Silence detected. Stopping...");
+              mediaRecorderRef.current.stop();
+            }
+          }, 1500);
+        }
+      } else {
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+      }
+    } else {
+      console.log("waiting for speech... avg:", avg.toFixed(4));
+    }
+
+    if (isListening) {
+      requestAnimationFrame(checkSilence);
+    }
   };
+
+  requestAnimationFrame(checkSilence);
+};
+
+
+  const renderAiAnimation = () => (
+    <div className="flex items-center gap-2 mt-2">
+      <span className="animate-bounce text-lg">●</span>
+      <span className="animate-bounce text-lg" style={{ animationDelay: "0.2s" }}>●</span>
+      <span className="animate-bounce text-lg" style={{ animationDelay: "0.4s" }}>●</span>
+      <span className="ml-2 text-sm text-gray-500">AI is speaking...</span>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
@@ -97,23 +203,18 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
           <div>
             <strong>You said:</strong>
             <div className="border p-2 rounded min-h-[50px] text-sm">
-              {transcript || "—"}
+              {transcript || (isListening ? "Listening..." : "—")}
             </div>
           </div>
           <div>
             <strong>AI response:</strong>
             <div className="border p-2 rounded min-h-[50px] text-sm">
-              {response || "—"}
+              {response || (aiSpeaking ? renderAiAnimation() : "—")}
             </div>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button onClick={isRecording ? handleStopRecording : handleStartRecording}>
-            {isRecording ? "Stop Recording" : "Start Talking"}
-          </Button>
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
+          <Button variant="outline" onClick={onClose}>Close</Button>
         </div>
       </div>
     </div>
