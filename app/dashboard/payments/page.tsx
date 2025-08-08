@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -16,6 +17,7 @@ import {
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
+
 interface SubscriptionDetails {
   id: string;
   status: string;
@@ -23,7 +25,6 @@ interface SubscriptionDetails {
   currentPeriodEnd: number;
   cancelAtPeriodEnd: boolean;
 }
-
 interface PaymentMethod {
   id: string;
   brand: string;
@@ -158,6 +159,7 @@ export default function SubscriptionPage() {
         <Loader2 className="w-6 h-6 animate-spin" />
       </div>
     );
+  }
 
   return (
     <div className="space-y-6">
@@ -172,7 +174,7 @@ export default function SubscriptionPage() {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <h3 className="font-semibold mb-2">{subscription?.plan.toUpperCase()} Plan</h3>
+              <h3 className="font-semibold mb-2">{subscription?.plan ? subscription.plan.toUpperCase() : "N/A"} Plan</h3>
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-2 ${
                   subscription?.status === "active"
@@ -185,21 +187,21 @@ export default function SubscriptionPage() {
               {subscription?.cancelAtPeriodEnd && (
                 <p className="text-sm text-red-600 mt-2">
                   Your subscription will end on{" "}
-                  {new Date(subscription.currentPeriodEnd * 1000).toLocaleDateString()}
+                  {subscription && subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd * 1000).toLocaleDateString() : "N/A"}
                 </p>
               )}
             </div>
             <div className="space-y-2">
               <div className="flex items-center text-sm">
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Next billing date:{" "}
-                {upcomingInvoice
+                Next billing date: {" "}
+                {upcomingInvoice && upcomingInvoice.date
                   ? new Date(upcomingInvoice.date * 1000).toLocaleDateString()
                   : "N/A"}
               </div>
               <div className="flex items-center text-sm">
                 <AlertCircle className="w-4 h-4 mr-2" />
-                Next payment: ${upcomingInvoice ? (upcomingInvoice.amount / 100).toFixed(2) : "N/A"}
+                Next payment: ${upcomingInvoice && typeof upcomingInvoice.amount === "number" ? (upcomingInvoice.amount / 100).toFixed(2) : "N/A"}
               </div>
             </div>
           </div>
@@ -376,4 +378,4 @@ function AddCardForm({
     </form>
   );
 }
-}
+
