@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SetupForm } from "@/types";
+import ReceiptModal from "./ReceiptModal";
 
 type Props = {
   onClose: () => void;
@@ -17,6 +18,8 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
   const [menu, setMenu] = useState(restaurant.menu);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [lastRecognizedItem, setLastRecognizedItem] = useState<string | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
@@ -37,6 +40,8 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
     speechSynthesis.cancel();
     setAiSpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text);
+    const voices = speechSynthesis.getVoices();
+    utterance.voice = voices.find(v => v.name.includes("Google UK English Female")) || voices[0];
     const lang =
       restaurant.language === "Spanish"
         ? "es-ES"
@@ -155,10 +160,12 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
         awaitingConfirmation &&
         lastRecognizedItem === data.orderedItem
       ) {
-        setAwaitingConfirmation(false);
-        setLastRecognizedItem(null);
-        speak(data.reply); // Final response after placing order
-        return;
+         setAwaitingConfirmation(false);
+         setLastRecognizedItem(null);
+         setReceiptData(data.receipt);
+         setShowReceipt(true);
+         speak(data.reply); // Final response after placing order
+         return;
       }
 
       // Default: loop back
@@ -173,11 +180,11 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
         console.warn("⏳ Forced stop due to timeout");
         mediaRecorderRef.current.stop();
       }
-    }, 15000); // Increased to 15s
+    }, 8000); // Increased to 8s
 
     // Silence detection
-    let totalVolume = 0;
-    let volumeChecks = 0;
+    let totalVolume = 5;
+    let volumeChecks = 6;
     let hasUserSpoken = false;
 
     const checkSilence = () => {
@@ -198,7 +205,7 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
               if (mediaRecorderRef.current?.state === "recording") {
                 mediaRecorderRef.current.stop();
               }
-            }, 1500);
+            }, 800);
           }
         } else {
           if (silenceTimeoutRef.current) {
@@ -215,6 +222,25 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
 
     requestAnimationFrame(checkSilence);
   };
+
+  const cleanupSession = () => {
+  // Stop mic recording
+  if (mediaRecorderRef.current?.state === "recording") {
+    mediaRecorderRef.current.stop();
+  }
+
+  // Cancel AI voice
+  speechSynthesis.cancel();
+
+  // Stop silence timeout
+  if (silenceTimeoutRef.current) {
+    clearTimeout(silenceTimeoutRef.current);
+    silenceTimeoutRef.current = null;
+  }
+
+  setIsListening(false);
+  setAiSpeaking(false);
+};
 
   const renderAiAnimation = () => (
     <div className="flex items-center gap-2 mt-2">
@@ -248,11 +274,21 @@ function SimulatedTestCallModal({ onClose, restaurant }: Props) {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={() => { 
+            cleanupSession();
+            onClose();
+          }}>
             Close
           </Button>
         </div>
       </div>
+      {showReceipt && (
+  <ReceiptModal 
+  open={showReceipt} 
+  onClose={() => setShowReceipt(false)} 
+  receipt={receiptData} 
+/>
+)}
     </div>
   );
 }

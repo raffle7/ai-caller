@@ -90,9 +90,9 @@ User: "${transcript}"
     let reply = gptRes.choices[0].message.content || "";
 
     if (hasOrdered && userConfirmed) {
-      reply += `\n\n✅ Your order for **${orderedItem}** has been placed.\n🧾 We'll now show you a receipt.\n\nThank you for your order! 😊`;
+      reply += ` Your order for **${orderedItem}** has been placed. We'll now show you a receipt.\n\nThank you for your order!`;
     } else if (hasOrdered) {
-      reply += `\n\n✅ You said you'd like to order **${orderedItem}**. Should I go ahead and place this order for you?`;
+      reply += ` You said you'd like to order **${orderedItem}**. Should I go ahead and place this order for you?`;
     }
 
     return NextResponse.json({
@@ -105,7 +105,7 @@ User: "${transcript}"
             item: orderedItem,
             price: "$12.00", // You can fetch price dynamically if needed
             status: "Confirmed",
-            thankYouNote: "Thank you for your order! 😊"
+            thankYouNote: "Thank you for your order!"
           }
         : null,
     });
